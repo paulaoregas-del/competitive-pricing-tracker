@@ -5,11 +5,17 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 import pytz
 import time
+import os
 
 # -----------------------------
 # CONFIG
 # -----------------------------
-SERVICE_ACCOUNT_FILE = "/Users/pausantos/Desktop/service_account.json"
+# DYNAMIC PATH: Works on your Mac Desktop AND automatically works on the Cloud server!
+if os.path.exists("service_account.json"):
+    SERVICE_ACCOUNT_FILE = "service_account.json"
+else:
+    SERVICE_ACCOUNT_FILE = "/Users/pausantos/Desktop/service_account.json"
+
 FOLDER_IDS = [
     "10GNhCuyDMKrS7tkgdZVIhuQdF0Ad2r2M",
     "1tu0HWUhN7aOMvyjsiZmKmBEzSaQsrZBq",
@@ -75,8 +81,7 @@ def list_sheets_in_folder(folder_id):
             print(f"⏩ SKIPPED (Archive/Copy): {file_name}")
             continue 
             
-        # 2. Skip years 2012-2023 (NEW REQUEST)
-        # Finds any 4-digit number and checks if it's 2012 <= year <= 2023
+        # 2. Skip years 2012-2023
         years_found = re.findall(r'\b(20\d{2})\b', file_name)
         is_old_year = any(2012 <= int(y) <= 2023 for y in years_found)
         if is_old_year:
@@ -120,7 +125,7 @@ for idx, f in enumerate(unique_files, start=1):
     file_id, file_name = f["id"], f["name"]
     print(f"[{idx}/{len(unique_files)}] Pulsing: {file_name}")
     
-    time.sleep(1.1)
+    time.sleep(1.5)  # Slightly increased spacing between API reads
     comments = []
     page_token = None
     while True:
@@ -149,12 +154,12 @@ for idx, f in enumerate(unique_files, start=1):
             row_num = comment_map[cid]
             if is_resolved:
                 tracker.delete_rows(row_num)
-                time.sleep(1.2)
+                time.sleep(2.0)  # Safe delay after deletion
                 comment_map = get_fresh_comment_map()
             else:
                 assignee = get_sticky_assignee(thread)
                 tracker.update(range_name=f"C{row_num}:F{row_num}", values=[[text, assignee, status, updated]])
-                time.sleep(0.5)
+                time.sleep(1.0)  # Safe delay after row update
         elif not is_resolved and text:
             if not any(cid == r[6] for r in new_rows):
                 assignee = get_sticky_assignee(thread)
@@ -162,7 +167,7 @@ for idx, f in enumerate(unique_files, start=1):
 
 if new_rows:
     tracker.append_rows(new_rows, value_input_option="USER_ENTERED")
-    time.sleep(1)
+    time.sleep(2.0)
 
 # --- RE-CALC OVERDUE ---
 all_data = tracker.get_all_records()
@@ -179,8 +184,9 @@ for row in all_data:
 
 if status_updates:
     tracker.update(range_name=f"H2:H{len(status_updates)+1}", values=status_updates)
+    time.sleep(2.0)
 
-# --- PERSONAL TAB SYNC (ENHANCED CLEAR LOGIC) ---
+# --- PERSONAL TAB SYNC (ANTI-QUOTA SAFETY ENABLED) ---
 print("\nRefreshing Personal Tabs...")
 all_data_final = tracker.get_all_records()
 
@@ -217,12 +223,12 @@ for tab_name in tabs_to_process:
                 print(f"➕ Creating New Tab: {tab_name}")
                 pt = master_sheet.add_worksheet(title=tab_name, rows="1000", cols="5")
                 pt.append_row(["Source File (Link)", "Comment", "Status", "Last Updated", "Status Check"])
-                time.sleep(2)
+                time.sleep(2.5)
             else:
                 continue
             
         pt.batch_clear(["A2:E1000"])
-        time.sleep(0.5)
+        time.sleep(2.0)  # CRITICAL: Added extra breath after clearing sheet
 
         if tab_name in groups:
             rows = groups[tab_name]
@@ -231,8 +237,9 @@ for tab_name in tabs_to_process:
         else:
             print(f"🧹 Cleared: {tab_name} (No pending comments)")
             
-        time.sleep(1)
+        time.sleep(2.5)  # CRITICAL: Breathe 2.5 seconds before hitting the next user tab!
     except Exception as e:
         print(f"❌ Error with {tab_name}: {e}")
+        time.sleep(5.0)  # If it hits an error, wait 5 full seconds to cool off the API quota
 
 print("\n✅ Pulse Complete. All tabs synchronized.")
