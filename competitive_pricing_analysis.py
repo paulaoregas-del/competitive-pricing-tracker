@@ -47,11 +47,11 @@ if not st.session_state.authenticated:
 st.sidebar.button("Log Out", on_click=lambda: st.session_state.update(authenticated=False))
 
 # ==============================================================================
-# 3. GOOGLE SHEETS CONNECTION & DATA LOADING
+# 3. GOOGLE SHEETS CONNECTION & DATA LOADING (HANDLES DUPLICATE HEADERS)
 # ==============================================================================
 @st.cache_data(ttl=600)
 def load_pricing_data():
-    """Connect to Google Sheets using Streamlit Secrets and load pricing data."""
+    """Connect to Google Sheets using Streamlit Secrets and load pricing data safely."""
     try:
         scope = [
             "https://spreadsheets.google.com/feeds",
@@ -67,9 +67,24 @@ def load_pricing_data():
         SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
         sheet = client.open_by_key(SPREADSHEET_ID).sheet1
         
-        # Extract records into a Pandas DataFrame
-        data = sheet.get_all_records()
-        df = pd.DataFrame(data)
+        # Fetch raw cell values instead of get_all_records() to safely handle duplicate column headers
+        raw_values = sheet.get_all_values()
+        
+        if not raw_values or len(raw_values) < 2:
+            return pd.DataFrame()
+            
+        headers = raw_values[0]
+        data = raw_values[1:]
+        
+        # Create DataFrame with duplicate header handling enabled
+        df = pd.DataFrame(data, columns=headers)
+        
+        # Clean up duplicate column names automatically (e.g. 'National CPR Foundation', 'National CPR Foundation.1')
+        cols = pd.Series(df.columns)
+        for dup in cols[cols.duplicated()].unique(): 
+            cols[cols == dup] = [f"{dup}_{i}" if i != 0 else dup for i in range(sum(cols == dup))]
+        df.columns = cols
+        
         return df
     except Exception as e:
         st.error(f"Error loading data from Google Sheets: {e}")
