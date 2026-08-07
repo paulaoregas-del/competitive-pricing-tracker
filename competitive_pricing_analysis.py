@@ -170,7 +170,7 @@ with tab_analytics:
         refresh_data = st.button("🔄 Fetch / Refresh Sheet Data", use_container_width=True)
 
     if refresh_data or "sheet_df" not in st.session_state:
-        if not os.path.exists(creds_dict):
+        if not not creds_dict:
             st.error(f"Credentials JSON not found at `{creds_dict}`")
         else:
             with st.spinner(f"Loading '{selected_tab}' from Google Sheets..."):
