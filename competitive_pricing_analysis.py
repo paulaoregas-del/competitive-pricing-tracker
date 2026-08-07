@@ -92,6 +92,21 @@ ALL_WORKSHEETS = [
     "Pricing - Bundles & For Life"
 ]
 
+def deduplicate_columns(df):
+    """Ensure all column headers are unique to prevent PyArrow st.dataframe errors."""
+    cols = []
+    counts = {}
+    for col in df.columns:
+        c_str = str(col).strip() if str(col).strip() else "Unnamed"
+        if c_str in counts:
+            counts[c_str] += 1
+            cols.append(f"{c_str}_{counts[c_str]}")
+        else:
+            counts[c_str] = 0
+            cols.append(c_str)
+    df.columns = cols
+    return df
+
 @st.cache_data(ttl=300)
 def fetch_worksheet_df(tab_name):
     if not os.path.exists(CREDS_FILE):
@@ -104,6 +119,7 @@ def fetch_worksheet_df(tab_name):
         if data:
             headers = data[0]
             df = pd.DataFrame(data[1:], columns=headers)
+            df = deduplicate_columns(df)
             return df, None
         return pd.DataFrame(), None
     except Exception as e:
