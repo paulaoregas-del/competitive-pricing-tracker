@@ -1,16 +1,28 @@
+import os
+import sys
+import time
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import time
 
-# --- CONFIGURATION ---
+# ==========================================
+# 1. CONFIGURATION & DYNAMIC MONTH SETUP
+# ==========================================
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
 CREDS_FILE = "pricing-tracker-499202-a9f7e625814b.json"
 
-SOURCE_MONTH = "May 2026"
-NEW_MONTH = "June 2026"
+# Automatically accepts Streamlit UI inputs, falling back to defaults if run standalone
+SOURCE_MONTH = sys.argv[1] if len(sys.argv) > 1 else os.getenv("SOURCE_MONTH", "May 2026")
+NEW_MONTH = sys.argv[2] if len(sys.argv) > 2 else os.getenv("NEW_MONTH", "June 2026")
 
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+SCOPE = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
+# ==========================================
+# 2. MONTHLY APPEND PROCESSOR
+# ==========================================
 def append_new_month_block(workbook, tab_name):
     try:
         sheet = workbook.worksheet(tab_name)

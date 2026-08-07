@@ -1,4 +1,5 @@
 import os
+import sys
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from selenium import webdriver
@@ -14,7 +15,9 @@ import re
 # ==========================================
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM" 
 CREDS_FILE = "pricing-tracker-499202-a9f7e625814b.json" 
-TARGET_MONTH_OVERRIDE = "June 2026"  
+
+# Dynamic month selector: Accepts target month from Streamlit UI, defaulting to "June 2026" if run directly
+TARGET_MONTH_OVERRIDE = sys.argv[1] if len(sys.argv) > 1 else os.getenv("TARGET_MONTH_OVERRIDE", "June 2026")
 
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
@@ -27,17 +30,17 @@ def extract_course_specific_price(page_text, course_name):
     
     if "handbook" in c_name_lower or "manual" in c_name_lower:
         kw = c_name_lower.replace("provider", "").replace("handbook", "").replace("pdf", "").replace("manual", "").strip()
-        match = re.search(rf'{kw}[^\$]*?(?:handbook|manual|pdf|ebook)[^\$]*?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(rf'{kw}[^\$]*?(?:handbook|manual|pdf|ebook)[^\$]*?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
         
     if "wall certificate" in c_name_lower:
         kw = c_name_lower.split(" ")[0]
-        match = re.search(rf'{kw}[^\$]*?(?:wall\s+certificate|certificate\s+print|physical\s+copy)[^\$]*?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(rf'{kw}[^\$]*?(?:wall\s+certificate|certificate\s+print|physical\s+copy)[^\$]*?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
         
     if "pin" in c_name_lower:
         kw = c_name_lower.split(" ")[0]
-        match = re.search(rf'{kw}[^\$]*?(?:pin|lapel\s+pin)[^\$]*?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(rf'{kw}[^\$]*?(?:pin|lapel\s+pin)[^\$]*?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
 
     if "retake" in c_name_lower:
@@ -46,7 +49,7 @@ def extract_course_specific_price(page_text, course_name):
 
     if "heartcode" in c_name_lower or "heartsaver" in c_name_lower:
         clean_kw = c_name_lower.replace("®", "").replace("™", "").strip()
-        match = re.search(rf'{clean_kw}[^\$]*?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(rf'{clean_kw}[^\$]*?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
 
     if "bls + cpr recertification" in c_name_lower:
@@ -92,7 +95,7 @@ def extract_course_specific_price(page_text, course_name):
             match = re.search(r'bls(?:[^\$]*?)(?:certification|initial|course)[^\$]*?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
             if match: return match.group(1)
             
-    match = re.search(rf'{re.escape(c_name_lower)}[^\$]*?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+    match = re.search(rf'{re.escape(c_name_lower)}[^\$]*?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
     if match: return match.group(1)
     return None
 
@@ -135,7 +138,7 @@ def process_tab_vertically(workbook, tab_name, target_month, driver, today_str):
         c_label = row[1].strip()
         if m_label == target_month.lower():
             may_rows.append({'row_num': idx + 1, 'course_name': c_label})
-        elif m_label == "may 2026":  # Historical safety memory points back to May now!
+        elif m_label == "may 2026":  # Historical safety memory points back to May!
             for col_idx in range(2, len(row)):
                 if row[col_idx].strip(): 
                     april_price_memory[(c_label.lower().strip(), col_idx)] = row[col_idx].strip()

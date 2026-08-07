@@ -1,2 +1,4 @@
 service_account.json
 *_log.txt
+*.json
+.DS_Store
