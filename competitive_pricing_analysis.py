@@ -46,7 +46,7 @@ APPEND_SCRIPT = os.path.join(BASE_DIR, "append_month.py")
 PRICING_SCRIPT = os.path.join(BASE_DIR, "pricing.py")
 
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
-CREDS_FILE = os.path.join(BASE_DIR, dict(st.secrets["gcp_service_account"]))
+creds_dict = dict(st.secrets["gcp_service_account"])
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
@@ -170,8 +170,8 @@ with tab_analytics:
         refresh_data = st.button("🔄 Fetch / Refresh Sheet Data", use_container_width=True)
 
     if refresh_data or "sheet_df" not in st.session_state:
-        if not os.path.exists(CREDS_FILE):
-            st.error(f"Credentials JSON not found at `{CREDS_FILE}`")
+        if not os.path.exists(creds_dict):
+            st.error(f"Credentials JSON not found at `{creds_dict}`")
         else:
             with st.spinner(f"Loading '{selected_tab}' from Google Sheets..."):
                 try:
