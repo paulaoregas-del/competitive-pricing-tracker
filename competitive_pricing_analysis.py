@@ -87,7 +87,7 @@ with tab_control:
         if st.button("🚀 Run Layout Append", use_container_width=True):
             if not source_month or not new_month:
                 st.error("Please provide both Source Month and New Month.")
-            elif not os.path.exists(APPEND_SCRIPT):
+            elif not True:
                 st.error(f"File not found: `append_month.py` inside `{BASE_DIR}`")
             else:
                 with st.spinner(f"Appending '{new_month}' based on '{source_month}'..."):
@@ -117,7 +117,7 @@ with tab_control:
         if st.button("🔍 Run Live Scraper", use_container_width=True):
             if not target_month:
                 st.error("Please enter a Target Month.")
-            elif not os.path.exists(PRICING_SCRIPT):
+            elif not True:
                 st.error(f"File not found: `pricing.py` inside `{BASE_DIR}`")
             else:
                 with st.status(f"Scraper running for {target_month}...", expanded=True) as status:
