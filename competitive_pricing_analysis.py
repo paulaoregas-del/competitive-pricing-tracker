@@ -73,6 +73,7 @@ st.sidebar.button("Log Out", on_click=lambda: st.session_state.update(authentica
 APPEND_SCRIPT = os.path.join(BASE_DIR, "append_month.py")
 PRICING_SCRIPT = os.path.join(BASE_DIR, "pricing.py")
 SYNC_SCRIPT = os.path.join(BASE_DIR, "sync_course_tabs.py")
+AI_FORMULA_SCRIPT = os.path.join(BASE_DIR, "run_ai_formula.py")
 
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
 SCOPE = [
@@ -82,29 +83,17 @@ SCOPE = [
 ]
 
 ALL_WORKSHEETS = [
-    # Master Sheets
-    "Master Pricing", 
-    "Master Amazon", 
-    "Master - Bundles & For Life", 
-    "Master Handbooks",
-    # Specific Course Tabs
-    "Pricing - ACLS Certification", 
-    "Pricing - ACLS Recertification",
-    "Pricing - PALS Certification", 
-    "Pricing - PALS Recertification",
-    "Pricing - BLS Certification", 
-    "Pricing - BLS Recertification",
-    "Pricing - CPR, AED & First Aid Certification", 
-    "Pricing - CPR, AED & First Aid Recertification",
-    "Pricing - Bloodborne Pathogens", 
-    "Pricing - NRP Certification", 
-    "Pricing - NRP Recertification",
+    "Master Pricing", "Master Amazon", "Master - Bundles & For Life", "Master Handbooks",
+    "Pricing - ACLS Certification", "Pricing - ACLS Recertification",
+    "Pricing - PALS Certification", "Pricing - PALS Recertification",
+    "Pricing - BLS Certification", "Pricing - BLS Recertification",
+    "Pricing - CPR, AED & First Aid Certification", "Pricing - CPR, AED & First Aid Recertification",
+    "Pricing - Bloodborne Pathogens", "Pricing - NRP Certification", "Pricing - NRP Recertification",
     "Pricing - Bundles & For Life"
 ]
 
 @st.cache_data(ttl=300)
 def fetch_worksheet_df(tab_name):
-    """Fetch data from a specific Google Sheet worksheet tab."""
     if not os.path.exists(CREDS_FILE):
         return None, f"Credentials file not found at `{CREDS_FILE}`"
     try:
@@ -122,7 +111,6 @@ def fetch_worksheet_df(tab_name):
 
 st.title("📊 Competitive Pricing Analysis Center")
 
-# Create Main Navigation Tabs
 tab_control, tab_viewer, tab_analytics = st.tabs([
     "⚡ Automation Controls", 
     "📋 Live Sheet Viewer", 
@@ -133,18 +121,17 @@ tab_control, tab_viewer, tab_analytics = st.tabs([
 # TAB 1: AUTOMATION CONTROLS
 # ==========================================
 with tab_control:
-    st.write("Manage monthly layout rollovers, live price web scraping, and course tab syncing directly from your browser.")
+    st.write("Manage monthly layout rollovers, Python web scraping, AI formula population, and course tab syncing.")
     st.divider()
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
-    # --- 1. MONTHLY LAYOUT ROLLOVER ---
     with col1:
         st.subheader("1. Monthly Layout Rollover")
         st.caption("Generates new monthly placeholder rows in Google Sheets.")
         
-        source_month = st.text_input("Source Month:", value="May 2026")
-        new_month = st.text_input("New Month:", value="June 2026")
+        source_month = st.text_input("Source Month:", value="June 2026")
+        new_month = st.text_input("New Month to Create:", value="July 2026")
         
         if st.button("🚀 Run Layout Append", use_container_width=True):
             if not source_month or not new_month:
@@ -171,53 +158,9 @@ with tab_control:
                         st.error("Error executing append_month.py")
                         st.code(e.stderr if e.stderr else e.stdout)
 
-    # --- 2. LIVE PRICE SCRAPER ---
     with col2:
-        st.subheader("2. Live Price Scraper")
-        st.caption("Crawls competitor pages and populates live prices into Google Sheets.")
-        
-        target_month = st.text_input("Target Month to Scrape:", value="June 2026")
-        
-        if st.button("🔍 Run Live Scraper", use_container_width=True):
-            if not target_month:
-                st.error("Please enter a Target Month.")
-            elif not os.path.exists(PRICING_SCRIPT):
-                st.error("File not found: `pricing.py`")
-            else:
-                with st.status(f"Scraper running for {target_month}...", expanded=True) as status:
-                    try:
-                        env = os.environ.copy()
-                        env["TARGET_MONTH_OVERRIDE"] = target_month
-                        env["CREDS_FILE_PATH"] = CREDS_FILE
-                        
-                        process = subprocess.Popen(
-                            [sys.executable, "-u", PRICING_SCRIPT, target_month], 
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=BASE_DIR
-                        )
-                        
-                        log_container = st.empty()
-                        logs = ""
-                        
-                        for line in iter(process.stdout.readline, ''):
-                            logs += line
-                            log_container.code(logs[-2000:])
-                            
-                        process.stdout.close()
-                        process.wait()
-                        
-                        if process.returncode == 0:
-                            status.update(label=f"Scraping complete for {target_month}!", state="complete")
-                            st.cache_data.clear()
-                            st.balloons()
-                        else:
-                            status.update(label="Scraper encountered an error during execution.", state="error")
-                    except Exception as e:
-                        st.error(f"Execution failed: {str(e)}")
-
-    # --- 3. COURSE TABS AUTO-SYNC ---
-    with col3:
-        st.subheader("3. Course Tabs Sync")
-        st.caption("Syncs May & June data from Master tabs into individual Course Tabs.")
+        st.subheader("2. Course Tabs Auto-Sync")
+        st.caption("Syncs Master tab data into individual Course Tabs.")
         
         if st.button("🔄 Sync Course Tabs Now", use_container_width=True):
             if not os.path.exists(SYNC_SCRIPT):
@@ -243,6 +186,82 @@ with tab_control:
                         st.error("Error executing sync_course_tabs.py")
                         st.code(e.stderr if e.stderr else e.stdout)
 
+    st.divider()
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.subheader("3. Live Web Scraper (Python)")
+        st.caption("Crawls competitor pages and inserts extracted numeric prices into Google Sheets.")
+        
+        target_month_scrape = st.text_input("Target Month to Scrape:", value="July 2026", key="scrape_month_in")
+        
+        if st.button("🔍 Run Web Scraper", use_container_width=True):
+            if not target_month_scrape:
+                st.error("Please enter a Target Month.")
+            elif not os.path.exists(PRICING_SCRIPT):
+                st.error("File not found: `pricing.py`")
+            else:
+                with st.status(f"Scraper running for {target_month_scrape}...", expanded=True) as status:
+                    try:
+                        env = os.environ.copy()
+                        env["TARGET_MONTH_OVERRIDE"] = target_month_scrape
+                        env["CREDS_FILE_PATH"] = CREDS_FILE
+                        
+                        process = subprocess.Popen(
+                            [sys.executable, "-u", PRICING_SCRIPT, target_month_scrape], 
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=BASE_DIR
+                        )
+                        
+                        log_container = st.empty()
+                        logs = ""
+                        
+                        for line in iter(process.stdout.readline, ''):
+                            logs += line
+                            log_container.code(logs[-2000:])
+                            
+                        process.stdout.close()
+                        process.wait()
+                        
+                        if process.returncode == 0:
+                            status.update(label=f"Scraping complete for {target_month_scrape}!", state="complete")
+                            st.cache_data.clear()
+                            st.balloons()
+                        else:
+                            status.update(label="Scraper encountered an error during execution.", state="error")
+                    except Exception as e:
+                        st.error(f"Execution failed: {str(e)}")
+
+    with col4:
+        st.subheader("4. Google Sheets AI Formula Populator")
+        st.caption("Alternative to scraping: Inserts =AI(...) formulas directly into cell values.")
+        
+        target_month_ai = st.text_input("Target Month for AI Formulas:", value="July 2026", key="ai_month_in")
+        
+        if st.button("🤖 Populate AI Formulas", use_container_width=True):
+            if not target_month_ai:
+                st.error("Please enter a Target Month.")
+            elif not os.path.exists(AI_FORMULA_SCRIPT):
+                st.error("File not found: `run_ai_formula.py`")
+            else:
+                with st.spinner(f"Populating AI formulas for '{target_month_ai}' across all sheets..."):
+                    try:
+                        env = os.environ.copy()
+                        env["TARGET_MONTH_OVERRIDE"] = target_month_ai
+                        env["CREDS_FILE_PATH"] = CREDS_FILE
+                        
+                        result = subprocess.run(
+                            [sys.executable, AI_FORMULA_SCRIPT, target_month_ai], 
+                            capture_output=True, text=True, check=True, env=env, cwd=BASE_DIR
+                        )
+                        st.success(f"Successfully populated AI formulas for {target_month_ai}!")
+                        st.cache_data.clear()
+                        st.balloons()
+                        with st.expander("View Execution Logs"):
+                            st.code(result.stdout)
+                    except subprocess.CalledProcessError as e:
+                        st.error("Error executing run_ai_formula.py")
+                        st.code(e.stderr if e.stderr else e.stdout)
+
 
 # ==========================================
 # TAB 2: LIVE SHEET VIEWER
@@ -254,11 +273,7 @@ with tab_viewer:
     col_sheet_sel, col_refresh = st.columns([3, 1])
 
     with col_sheet_sel:
-        view_tab_name = st.selectbox(
-            "Select Worksheet Tab to Display:",
-            ALL_WORKSHEETS,
-            key="view_tab_select"
-        )
+        view_tab_name = st.selectbox("Select Worksheet Tab to Display:", ALL_WORKSHEETS, key="view_tab_select")
 
     with col_refresh:
         st.write(" ")
@@ -272,7 +287,6 @@ with tab_viewer:
     if err:
         st.error(f"Failed to load worksheet '{view_tab_name}': {err}")
     elif df_view is not None and not df_view.empty:
-        # Filtering Options
         month_col = df_view.columns[0]
         all_months = [m.strip() for m in df_view[month_col].dropna().unique() if m.strip()]
 
@@ -292,7 +306,6 @@ with tab_viewer:
             mask = filtered_view.apply(lambda row: row.astype(str).str.lower().str.contains(query_lower).any(), axis=1)
             filtered_view = filtered_view[mask]
 
-        # Summary Metrics
         m1, m2, m3 = st.columns(3)
         m1.metric("Total Rows Displayed", len(filtered_view))
         m2.metric("Total Competitor Columns", max(0, len(filtered_view.columns) - 2))
@@ -300,15 +313,8 @@ with tab_viewer:
 
         st.divider()
 
-        # Display Dataframe
-        st.dataframe(
-            filtered_view, 
-            use_container_width=True, 
-            hide_index=True, 
-            height=500
-        )
+        st.dataframe(filtered_view, use_container_width=True, hide_index=True, height=500)
 
-        # Download CSV Option
         csv_data = filtered_view.to_csv(index=False).encode('utf-8')
         st.download_button(
             label=f"📥 Download '{view_tab_name}' CSV",
@@ -330,11 +336,7 @@ with tab_analytics:
     col_workspace, col_btn = st.columns([3, 1])
 
     with col_workspace:
-        selected_tab = st.selectbox(
-            "Select Worksheet Tab to Analyze:", 
-            ALL_WORKSHEETS,
-            key="analytics_tab_select"
-        )
+        selected_tab = st.selectbox("Select Worksheet Tab to Analyze:", ALL_WORKSHEETS, key="analytics_tab_select")
 
     with col_btn:
         st.write(" ")
@@ -360,11 +362,7 @@ with tab_analytics:
             with m_col1:
                 baseline_month = st.selectbox("Baseline Month (Previous):", available_months, index=0)
             with m_col2:
-                comparison_month = st.selectbox(
-                    "Comparison Month (New):", 
-                    available_months, 
-                    index=min(1, len(available_months) - 1)
-                )
+                comparison_month = st.selectbox("Comparison Month (New):", available_months, index=min(1, len(available_months) - 1))
 
             competitor_cols = [c for c in df.columns[2:] if c.strip()]
 
@@ -445,12 +443,7 @@ with tab_analytics:
 
                 filtered_df = res_df[res_df["Status"].isin(filter_status)]
 
-                st.dataframe(
-                    filtered_df, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    height=450
-                )
+                st.dataframe(filtered_df, use_container_width=True, hide_index=True, height=450)
             else:
                 st.info("No matching numeric price data found to compare between these two selected months.")
     else:
