@@ -82,13 +82,18 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-ALL_WORKSHEETS = [
-    "Master Pricing", "Master Amazon", "Master - Bundles & For Life", "Master Handbooks",
-    "Pricing - ACLS Certification", "Pricing - ACLS Recertification",
-    "Pricing - PALS Certification", "Pricing - PALS Recertification",
-    "Pricing - BLS Certification", "Pricing - BLS Recertification",
-    "Pricing - CPR, AED & First Aid Certification", "Pricing - CPR, AED & First Aid Recertification",
-    "Pricing - Bloodborne Pathogens", "Pricing - NRP Certification", "Pricing - NRP Recertification",
+COURSE_WORKSHEETS = [
+    "Pricing - ACLS Certification", 
+    "Pricing - ACLS Recertification",
+    "Pricing - PALS Certification", 
+    "Pricing - PALS Recertification",
+    "Pricing - BLS Certification", 
+    "Pricing - BLS Recertification",
+    "Pricing - CPR, AED & First Aid Certification", 
+    "Pricing - CPR, AED & First Aid Recertification",
+    "Pricing - Bloodborne Pathogens", 
+    "Pricing - NRP Certification", 
+    "Pricing - NRP Recertification",
     "Pricing - Bundles & For Life"
 ]
 
@@ -137,14 +142,15 @@ tab_control, tab_viewer, tab_analytics = st.tabs([
 # TAB 1: AUTOMATION CONTROLS
 # ==========================================
 with tab_control:
-    st.write("Manage monthly layout rollovers, Python web scraping, AI formula population, and course tab syncing.")
-    st.divider()
-
+    st.subheader("🚀 Primary AI Formula Workflow")
+    st.caption("Standard monthly process: Generate new month rows and populate =AI(...) formulas directly across all 12 Course Pricing tabs.")
+    
     col1, col2 = st.columns(2)
 
+    # --- 1. MONTHLY LAYOUT ROLLOVER ---
     with col1:
-        st.subheader("1. Monthly Layout Rollover")
-        st.caption("Generates new monthly placeholder rows in Google Sheets.")
+        st.markdown("### 1. Monthly Layout Rollover")
+        st.caption("Generates new monthly placeholder rows directly in the 12 Course Pricing tabs.")
         
         source_month = st.text_input("Source Month:", value="June 2026")
         new_month = st.text_input("New Month to Create:", value="July 2026")
@@ -174,40 +180,49 @@ with tab_control:
                         st.error("Error executing append_month.py")
                         st.code(e.stderr if e.stderr else e.stdout)
 
+    # --- 2. AI FORMULA POPULATOR ---
     with col2:
-        st.subheader("2. Course Tabs Auto-Sync")
-        st.caption("Syncs Master tab data into individual Course Tabs.")
+        st.markdown("### 2. Google Sheets AI Formula Populator")
+        st.caption("Inserts =AI(...) formulas directly into target month cells across all 12 Course Pricing tabs.")
         
-        if st.button("🔄 Sync Course Tabs Now", use_container_width=True):
-            if not os.path.exists(SYNC_SCRIPT):
-                st.error("File not found: `sync_course_tabs.py`")
+        target_month_ai = st.text_input("Target Month for AI Formulas:", value="July 2026", key="ai_month_in")
+        
+        if st.button("🤖 Populate AI Formulas", use_container_width=True):
+            if not target_month_ai:
+                st.error("Please enter a Target Month.")
+            elif not os.path.exists(AI_FORMULA_SCRIPT):
+                st.error("File not found: `run_ai_formula.py`")
             else:
-                with st.spinner("Syncing course tabs in Google Sheets..."):
+                with st.spinner(f"Populating AI formulas for '{target_month_ai}' across course tabs..."):
                     try:
                         env = os.environ.copy()
+                        env["TARGET_MONTH_OVERRIDE"] = target_month_ai
                         env["CREDS_FILE_PATH"] = CREDS_FILE
-                        env["SOURCE_MONTH"] = source_month
-                        env["NEW_MONTH"] = new_month
                         
                         result = subprocess.run(
-                            [sys.executable, SYNC_SCRIPT], 
+                            [sys.executable, AI_FORMULA_SCRIPT, target_month_ai], 
                             capture_output=True, text=True, check=True, env=env, cwd=BASE_DIR
                         )
-                        st.success("Successfully synced all course tabs!")
+                        st.success(f"Successfully populated AI formulas for {target_month_ai}!")
                         st.cache_data.clear()
                         st.balloons()
-                        with st.expander("View Sync Logs"):
+                        with st.expander("View Execution Logs"):
                             st.code(result.stdout)
                     except subprocess.CalledProcessError as e:
-                        st.error("Error executing sync_course_tabs.py")
+                        st.error("Error executing run_ai_formula.py")
                         st.code(e.stderr if e.stderr else e.stdout)
 
     st.divider()
+
+    st.subheader("🛠️ Alternative Data Retrieval & Workaround Tools")
+    st.caption("Alternative options if you prefer to run Python web scraping directly or perform manual sheet syncs.")
+
     col3, col4 = st.columns(2)
 
+    # --- 3. LIVE PRICE SCRAPER ---
     with col3:
-        st.subheader("3. Live Web Scraper (Python)")
-        st.caption("Crawls competitor pages and inserts extracted numeric prices into Google Sheets.")
+        st.markdown("### 3. Live Web Scraper (Python)")
+        st.caption("Crawls competitor pages and populates live prices directly into the 12 Course Pricing tabs.")
         
         target_month_scrape = st.text_input("Target Month to Scrape:", value="July 2026", key="scrape_month_in")
         
@@ -247,35 +262,33 @@ with tab_control:
                     except Exception as e:
                         st.error(f"Execution failed: {str(e)}")
 
+    # --- 4. COURSE TABS AUTO-SYNC ---
     with col4:
-        st.subheader("4. Google Sheets AI Formula Populator")
-        st.caption("Alternative to scraping: Inserts =AI(...) formulas directly into cell values.")
+        st.markdown("### 4. Course Tabs Auto-Sync")
+        st.caption("Workaround sync tool to refresh individual Course Pricing tabs if data was edited externally.")
         
-        target_month_ai = st.text_input("Target Month for AI Formulas:", value="July 2026", key="ai_month_in")
-        
-        if st.button("🤖 Populate AI Formulas", use_container_width=True):
-            if not target_month_ai:
-                st.error("Please enter a Target Month.")
-            elif not os.path.exists(AI_FORMULA_SCRIPT):
-                st.error("File not found: `run_ai_formula.py`")
+        if st.button("🔄 Sync Course Tabs Now", use_container_width=True):
+            if not os.path.exists(SYNC_SCRIPT):
+                st.error("File not found: `sync_course_tabs.py`")
             else:
-                with st.spinner(f"Populating AI formulas for '{target_month_ai}' across all sheets..."):
+                with st.spinner("Syncing course tabs in Google Sheets..."):
                     try:
                         env = os.environ.copy()
-                        env["TARGET_MONTH_OVERRIDE"] = target_month_ai
                         env["CREDS_FILE_PATH"] = CREDS_FILE
+                        env["SOURCE_MONTH"] = source_month
+                        env["NEW_MONTH"] = new_month
                         
                         result = subprocess.run(
-                            [sys.executable, AI_FORMULA_SCRIPT, target_month_ai], 
+                            [sys.executable, SYNC_SCRIPT], 
                             capture_output=True, text=True, check=True, env=env, cwd=BASE_DIR
                         )
-                        st.success(f"Successfully populated AI formulas for {target_month_ai}!")
+                        st.success("Successfully synced all course tabs!")
                         st.cache_data.clear()
                         st.balloons()
-                        with st.expander("View Execution Logs"):
+                        with st.expander("View Sync Logs"):
                             st.code(result.stdout)
                     except subprocess.CalledProcessError as e:
-                        st.error("Error executing run_ai_formula.py")
+                        st.error("Error executing sync_course_tabs.py")
                         st.code(e.stderr if e.stderr else e.stdout)
 
 
@@ -284,12 +297,12 @@ with tab_control:
 # ==========================================
 with tab_viewer:
     st.subheader("📋 Google Sheets Live Tab Viewer")
-    st.caption("Inspect real-time data from any Master or individual Course worksheet tab.")
+    st.caption("Inspect real-time data from any course pricing worksheet tab.")
 
     col_sheet_sel, col_refresh = st.columns([3, 1])
 
     with col_sheet_sel:
-        view_tab_name = st.selectbox("Select Worksheet Tab to Display:", ALL_WORKSHEETS, key="view_tab_select")
+        view_tab_name = st.selectbox("Select Course Tab to Display:", COURSE_WORKSHEETS, key="view_tab_select")
 
     with col_refresh:
         st.write(" ")
@@ -310,7 +323,7 @@ with tab_viewer:
         with f_col1:
             selected_months = st.multiselect("Filter by Month:", all_months, default=all_months)
         with f_col2:
-            search_query = st.text_input("Search Course / Competitor:", "")
+            search_query = st.text_input("Search Competitor / Product:", "")
 
         filtered_view = df_view.copy()
 
@@ -347,12 +360,12 @@ with tab_viewer:
 # ==========================================
 with tab_analytics:
     st.subheader("🔍 Historical Price Movement & Multi-Month Comparison")
-    st.caption("Analyze month-over-month price fluctuations across all competitor products.")
+    st.caption("Analyze month-over-month price fluctuations across all competitor course tabs.")
 
     col_workspace, col_btn = st.columns([3, 1])
 
     with col_workspace:
-        selected_tab = st.selectbox("Select Worksheet Tab to Analyze:", ALL_WORKSHEETS, key="analytics_tab_select")
+        selected_tab = st.selectbox("Select Course Tab to Analyze:", COURSE_WORKSHEETS, key="analytics_tab_select")
 
     with col_btn:
         st.write(" ")
@@ -388,9 +401,6 @@ with tab_analytics:
             comparison_rows = []
 
             for course in df_base[course_col].unique():
-                if not str(course).strip():
-                    continue
-
                 row_base = df_base[df_base[course_col] == course]
                 row_comp = df_comp[df_comp[course_col] == course]
 
@@ -424,7 +434,7 @@ with tab_analytics:
                                 status = "⚪ Unchanged"
 
                             comparison_rows.append({
-                                "Course / Product": course,
+                                "Course / Product": course if str(course).strip() else selected_tab.replace("Pricing - ", ""),
                                 "Competitor": comp,
                                 f"{baseline_month} Price": f"${p_base:.2f}",
                                 f"{comparison_month} Price": f"${p_comp:.2f}",
@@ -463,4 +473,4 @@ with tab_analytics:
             else:
                 st.info("No matching numeric price data found to compare between these two selected months.")
     else:
-        st.info("Select a valid worksheet tab with data to begin comparison.")
+        st.info("Select a valid course tab with data to begin comparison.")
