@@ -81,10 +81,53 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
+ALL_WORKSHEETS = [
+    # Master Sheets
+    "Master Pricing", 
+    "Master Amazon", 
+    "Master - Bundles & For Life", 
+    "Master Handbooks",
+    # Specific Course Tabs
+    "Pricing - ACLS Certification", 
+    "Pricing - ACLS Recertification",
+    "Pricing - PALS Certification", 
+    "Pricing - PALS Recertification",
+    "Pricing - BLS Certification", 
+    "Pricing - BLS Recertification",
+    "Pricing - CPR, AED & First Aid Certification", 
+    "Pricing - CPR, AED & First Aid Recertification",
+    "Pricing - Bloodborne Pathogens", 
+    "Pricing - NRP Certification", 
+    "Pricing - NRP Recertification",
+    "Pricing - Bundles & For Life"
+]
+
+@st.cache_data(ttl=300)
+def fetch_worksheet_df(tab_name):
+    """Fetch data from a specific Google Sheet worksheet tab."""
+    if not os.path.exists(CREDS_FILE):
+        return None, f"Credentials file not found at `{CREDS_FILE}`"
+    try:
+        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, SCOPE)
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(SPREADSHEET_ID).worksheet(tab_name)
+        data = sheet.get_all_values()
+        if data:
+            headers = data[0]
+            df = pd.DataFrame(data[1:], columns=headers)
+            return df, None
+        return pd.DataFrame(), None
+    except Exception as e:
+        return None, str(e)
+
 st.title("📊 Competitive Pricing Analysis Center")
 
-# Create Main Tabs
-tab_control, tab_analytics = st.tabs(["⚡ Automation Controls", "📈 Price Comparison Analytics"])
+# Create Main Navigation Tabs
+tab_control, tab_viewer, tab_analytics = st.tabs([
+    "⚡ Automation Controls", 
+    "📋 Live Sheet Viewer", 
+    "📈 Price Comparison Analytics"
+])
 
 # ==========================================
 # TAB 1: AUTOMATION CONTROLS
@@ -107,7 +150,7 @@ with tab_control:
             if not source_month or not new_month:
                 st.error("Please provide both Source Month and New Month.")
             elif not os.path.exists(APPEND_SCRIPT):
-                st.error(f"File not found: `append_month.py`")
+                st.error("File not found: `append_month.py`")
             else:
                 with st.spinner(f"Appending '{new_month}' based on '{source_month}'..."):
                     try:
@@ -121,6 +164,7 @@ with tab_control:
                             capture_output=True, text=True, check=True, env=env, cwd=BASE_DIR
                         )
                         st.success(f"Successfully generated rows for {new_month}!")
+                        st.cache_data.clear()
                         with st.expander("View Output Logs"):
                             st.code(result.stdout)
                     except subprocess.CalledProcessError as e:
@@ -138,7 +182,7 @@ with tab_control:
             if not target_month:
                 st.error("Please enter a Target Month.")
             elif not os.path.exists(PRICING_SCRIPT):
-                st.error(f"File not found: `pricing.py`")
+                st.error("File not found: `pricing.py`")
             else:
                 with st.status(f"Scraper running for {target_month}...", expanded=True) as status:
                     try:
@@ -163,6 +207,7 @@ with tab_control:
                         
                         if process.returncode == 0:
                             status.update(label=f"Scraping complete for {target_month}!", state="complete")
+                            st.cache_data.clear()
                             st.balloons()
                         else:
                             status.update(label="Scraper encountered an error during execution.", state="error")
@@ -176,7 +221,7 @@ with tab_control:
         
         if st.button("🔄 Sync Course Tabs Now", use_container_width=True):
             if not os.path.exists(SYNC_SCRIPT):
-                st.error(f"File not found: `sync_course_tabs.py`")
+                st.error("File not found: `sync_course_tabs.py`")
             else:
                 with st.spinner("Syncing course tabs in Google Sheets..."):
                     try:
@@ -190,6 +235,7 @@ with tab_control:
                             capture_output=True, text=True, check=True, env=env, cwd=BASE_DIR
                         )
                         st.success("Successfully synced all course tabs!")
+                        st.cache_data.clear()
                         st.balloons()
                         with st.expander("View Sync Logs"):
                             st.code(result.stdout)
@@ -197,62 +243,116 @@ with tab_control:
                         st.error("Error executing sync_course_tabs.py")
                         st.code(e.stderr if e.stderr else e.stdout)
 
+
 # ==========================================
-# TAB 2: PRICE COMPARISON ANALYTICS
+# TAB 2: LIVE SHEET VIEWER
+# ==========================================
+with tab_viewer:
+    st.subheader("📋 Google Sheets Live Tab Viewer")
+    st.caption("Inspect real-time data from any Master or individual Course worksheet tab.")
+
+    col_sheet_sel, col_refresh = st.columns([3, 1])
+
+    with col_sheet_sel:
+        view_tab_name = st.selectbox(
+            "Select Worksheet Tab to Display:",
+            ALL_WORKSHEETS,
+            key="view_tab_select"
+        )
+
+    with col_refresh:
+        st.write(" ")
+        st.write(" ")
+        if st.button("🔄 Clear Cache & Reload", use_container_width=True, key="reload_view_btn"):
+            st.cache_data.clear()
+            st.rerun()
+
+    df_view, err = fetch_worksheet_df(view_tab_name)
+
+    if err:
+        st.error(f"Failed to load worksheet '{view_tab_name}': {err}")
+    elif df_view is not None and not df_view.empty:
+        # Filtering Options
+        month_col = df_view.columns[0]
+        all_months = [m.strip() for m in df_view[month_col].dropna().unique() if m.strip()]
+
+        f_col1, f_col2 = st.columns([1, 2])
+        with f_col1:
+            selected_months = st.multiselect("Filter by Month:", all_months, default=all_months)
+        with f_col2:
+            search_query = st.text_input("Search Course / Competitor:", "")
+
+        filtered_view = df_view.copy()
+
+        if selected_months:
+            filtered_view = filtered_view[filtered_view[month_col].str.strip().isin(selected_months)]
+
+        if search_query:
+            query_lower = search_query.lower()
+            mask = filtered_view.apply(lambda row: row.astype(str).str.lower().str.contains(query_lower).any(), axis=1)
+            filtered_view = filtered_view[mask]
+
+        # Summary Metrics
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Total Rows Displayed", len(filtered_view))
+        m2.metric("Total Competitor Columns", max(0, len(filtered_view.columns) - 2))
+        m3.metric("Selected Worksheet", view_tab_name)
+
+        st.divider()
+
+        # Display Dataframe
+        st.dataframe(
+            filtered_view, 
+            use_container_width=True, 
+            hide_index=True, 
+            height=500
+        )
+
+        # Download CSV Option
+        csv_data = filtered_view.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label=f"📥 Download '{view_tab_name}' CSV",
+            data=csv_data,
+            file_name=f"{view_tab_name.replace(' ', '_')}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info(f"Worksheet '{view_tab_name}' is currently empty or has no header row.")
+
+
+# ==========================================
+# TAB 3: PRICE COMPARISON ANALYTICS
 # ==========================================
 with tab_analytics:
     st.subheader("🔍 Historical Price Movement & Multi-Month Comparison")
-    st.caption("Analyze month-over-month price fluctuations directly from your Google Sheet data.")
-    
+    st.caption("Analyze month-over-month price fluctuations across all competitor products.")
+
     col_workspace, col_btn = st.columns([3, 1])
-    
+
     with col_workspace:
         selected_tab = st.selectbox(
             "Select Worksheet Tab to Analyze:", 
-            [
-                "Master Pricing", "Master Amazon", "Master - Bundles & For Life", "Master Handbooks",
-                "Pricing - ACLS Certification", "Pricing - ACLS Recertification",
-                "Pricing - PALS Certification", "Pricing - PALS Recertification",
-                "Pricing - BLS Certification", "Pricing - BLS Recertification",
-                "Pricing - CPR, AED & First Aid Certification", "Pricing - CPR, AED & First Aid Recertification",
-                "Pricing - Bloodborne Pathogens", "Pricing - NRP Certification", "Pricing - NRP Recertification",
-                "Pricing - Bundles & For Life"
-            ]
+            ALL_WORKSHEETS,
+            key="analytics_tab_select"
         )
-        
+
     with col_btn:
         st.write(" ")
         st.write(" ")
-        refresh_data = st.button("🔄 Fetch / Refresh Sheet Data", use_container_width=True)
+        refresh_data = st.button("🔄 Fetch / Refresh Analytics", use_container_width=True, key="analytics_ref_btn")
 
-    if refresh_data or "sheet_df" not in st.session_state:
-        if not os.path.exists(CREDS_FILE):
-            st.error(f"Credentials JSON file not found at `{CREDS_FILE}`")
-        else:
-            with st.spinner(f"Loading '{selected_tab}' from Google Sheets..."):
-                try:
-                    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, SCOPE)
-                    client = gspread.authorize(creds)
-                    sheet = client.open_by_key(SPREADSHEET_ID).worksheet(selected_tab)
-                    
-                    data = sheet.get_all_values()
-                    if data:
-                        headers = data[0]
-                        df = pd.DataFrame(data[1:], columns=headers)
-                        st.session_state["sheet_df"] = df
-                        st.session_state["loaded_tab"] = selected_tab
-                        st.success(f"Data updated from '{selected_tab}'!")
-                except Exception as e:
-                    st.error(f"Failed to load sheet data: {str(e)}")
+    df_analytics, err = fetch_worksheet_df(selected_tab)
 
-    if "sheet_df" in st.session_state and st.session_state.get("loaded_tab") == selected_tab:
-        df = st.session_state["sheet_df"].copy()
-        
+    if err:
+        st.error(f"Failed to load worksheet '{selected_tab}': {err}")
+    elif df_analytics is not None and not df_analytics.empty:
+        df = df_analytics.copy()
+
         month_col = df.columns[0]
         course_col = df.columns[1]
         available_months = list(df[month_col].str.strip().unique())
         available_months = [m for m in available_months if m]
-        
+
         if len(available_months) < 2:
             st.warning("Need at least 2 distinct months of data in this worksheet to perform comparison.")
         else:
@@ -260,23 +360,29 @@ with tab_analytics:
             with m_col1:
                 baseline_month = st.selectbox("Baseline Month (Previous):", available_months, index=0)
             with m_col2:
-                comparison_month = st.selectbox("Comparison Month (New):", available_months, index=min(1, len(available_months)-1))
+                comparison_month = st.selectbox(
+                    "Comparison Month (New):", 
+                    available_months, 
+                    index=min(1, len(available_months) - 1)
+                )
 
             competitor_cols = [c for c in df.columns[2:] if c.strip()]
-            
+
             df_base = df[df[month_col].str.strip().str.lower() == baseline_month.lower()][[course_col] + competitor_cols]
             df_comp = df[df[month_col].str.strip().str.lower() == comparison_month.lower()][[course_col] + competitor_cols]
-            
+
             comparison_rows = []
 
             for course in df_base[course_col].unique():
-                if not str(course).strip(): continue
-                
+                if not str(course).strip():
+                    continue
+
                 row_base = df_base[df_base[course_col] == course]
                 row_comp = df_comp[df_comp[course_col] == course]
-                
-                if row_base.empty or row_comp.empty: continue
-                
+
+                if row_base.empty or row_comp.empty:
+                    continue
+
                 for comp in competitor_cols:
                     if comp not in row_base.columns or comp not in row_comp.columns:
                         continue
@@ -293,7 +399,7 @@ with tab_analytics:
                     try:
                         p_base = float(s_base) if s_base and s_base.lower() not in ["nan", "none", ""] else None
                         p_comp = float(s_comp) if s_comp and s_comp.lower() not in ["nan", "none", ""] else None
-                        
+
                         if p_base is not None and p_comp is not None:
                             diff = p_comp - p_base
                             if diff < -0.001:
@@ -302,7 +408,7 @@ with tab_analytics:
                                 status = "🔴 Price Hike"
                             else:
                                 status = "⚪ Unchanged"
-                                
+
                             comparison_rows.append({
                                 "Course / Product": course,
                                 "Competitor": comp,
@@ -315,11 +421,11 @@ with tab_analytics:
                         continue
 
             st.divider()
-            
+
             if comparison_rows:
                 res_df = pd.DataFrame(comparison_rows)
                 res_df = res_df.drop_duplicates(subset=["Course / Product", "Competitor"], keep="first")
-                
+
                 price_drops = int((res_df["Status"] == "🟢 Price Cut").sum())
                 price_hikes = int((res_df["Status"] == "🔴 Price Hike").sum())
                 unchanged = int((res_df["Status"] == "⚪ Unchanged").sum())
@@ -328,7 +434,7 @@ with tab_analytics:
                 met1.metric("🟢 Price Cuts Detected", price_drops)
                 met2.metric("🔴 Price Hikes Detected", price_hikes)
                 met3.metric("⚪ Unchanged Listings", unchanged)
-                
+
                 st.divider()
 
                 filter_status = st.multiselect(
@@ -336,9 +442,9 @@ with tab_analytics:
                     ["🟢 Price Cut", "🔴 Price Hike", "⚪ Unchanged"],
                     default=["🟢 Price Cut", "🔴 Price Hike", "⚪ Unchanged"]
                 )
-                
+
                 filtered_df = res_df[res_df["Status"].isin(filter_status)]
-                
+
                 st.dataframe(
                     filtered_df, 
                     use_container_width=True, 
@@ -347,3 +453,5 @@ with tab_analytics:
                 )
             else:
                 st.info("No matching numeric price data found to compare between these two selected months.")
+    else:
+        st.info("Select a valid worksheet tab with data to begin comparison.")
