@@ -32,7 +32,7 @@ try:
 except Exception as e:
     st.error(f"Error initializing GCP Secrets: {e}")
 
-# Fallback to local JSON file if running on a local desktop
+# Fallback to local JSON file if running on local desktop
 LOCAL_CREDS_FILE = os.path.join(BASE_DIR, "pricing-tracker-499202-a9f7e625814b.json")
 CREDS_FILE = TEMP_CREDS_FILE if os.path.exists(TEMP_CREDS_FILE) else LOCAL_CREDS_FILE
 
@@ -115,6 +115,7 @@ with tab_control:
                         env = os.environ.copy()
                         env["SOURCE_MONTH"] = source_month
                         env["NEW_MONTH"] = new_month
+                        env["CREDS_FILE_PATH"] = CREDS_FILE
                         
                         result = subprocess.run(
                             [sys.executable, APPEND_SCRIPT, source_month, new_month], 
@@ -144,6 +145,7 @@ with tab_control:
                     try:
                         env = os.environ.copy()
                         env["TARGET_MONTH_OVERRIDE"] = target_month
+                        env["CREDS_FILE_PATH"] = CREDS_FILE
                         
                         process = subprocess.Popen(
                             [sys.executable, "-u", PRICING_SCRIPT, target_month], 
@@ -212,7 +214,6 @@ with tab_analytics:
     if "sheet_df" in st.session_state and st.session_state.get("loaded_tab") == selected_tab:
         df = st.session_state["sheet_df"].copy()
         
-        # Identify available months in Column 0
         month_col = df.columns[0]
         course_col = df.columns[1]
         available_months = list(df[month_col].str.strip().unique())
@@ -229,7 +230,6 @@ with tab_analytics:
 
             competitor_cols = [c for c in df.columns[2:] if c.strip()]
             
-            # Slice Data for comparison
             df_base = df[df[month_col].str.strip().str.lower() == baseline_month.lower()][[course_col] + competitor_cols]
             df_comp = df[df[month_col].str.strip().str.lower() == comparison_month.lower()][[course_col] + competitor_cols]
             
@@ -247,7 +247,6 @@ with tab_analytics:
                     if comp not in row_base.columns or comp not in row_comp.columns:
                         continue
 
-                    # Safely extract scalar array elements without evaluating truth value of Series
                     base_vals = row_base[comp].values.ravel()
                     comp_vals = row_comp[comp].values.ravel()
 
@@ -285,16 +284,12 @@ with tab_analytics:
             
             if comparison_rows:
                 res_df = pd.DataFrame(comparison_rows)
-                
-                # --- DEDUPLICATION STEP ---
                 res_df = res_df.drop_duplicates(subset=["Course / Product", "Competitor"], keep="first")
                 
-                # Recalculate metrics based on deduplicated data
                 price_drops = int((res_df["Status"] == "🟢 Price Cut").sum())
                 price_hikes = int((res_df["Status"] == "🔴 Price Hike").sum())
                 unchanged = int((res_df["Status"] == "⚪ Unchanged").sum())
 
-                # Summary Metrics
                 met1, met2, met3 = st.columns(3)
                 met1.metric("🟢 Price Cuts Detected", price_drops)
                 met2.metric("🔴 Price Hikes Detected", price_hikes)
@@ -302,7 +297,6 @@ with tab_analytics:
                 
                 st.divider()
 
-                # Filter Controls
                 filter_status = st.multiselect(
                     "Filter by Price Movement:", 
                     ["🟢 Price Cut", "🔴 Price Hike", "⚪ Unchanged"],
