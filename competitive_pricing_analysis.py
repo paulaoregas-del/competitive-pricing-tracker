@@ -22,7 +22,6 @@ st.set_page_config(
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Write Streamlit Cloud secrets to a temporary physical JSON file on startup
 TEMP_CREDS_FILE = os.path.join(tempfile.gettempdir(), "gcp_service_account.json")
 
 try:
@@ -32,7 +31,6 @@ try:
 except Exception as e:
     st.error(f"Error initializing GCP Secrets: {e}")
 
-# Fallback to local JSON file if running on local desktop
 LOCAL_CREDS_FILE = os.path.join(BASE_DIR, "pricing-tracker-499202-a9f7e625814b.json")
 CREDS_FILE = TEMP_CREDS_FILE if os.path.exists(TEMP_CREDS_FILE) else LOCAL_CREDS_FILE
 
@@ -74,6 +72,7 @@ st.sidebar.button("Log Out", on_click=lambda: st.session_state.update(authentica
 # ==========================================
 APPEND_SCRIPT = os.path.join(BASE_DIR, "append_month.py")
 PRICING_SCRIPT = os.path.join(BASE_DIR, "pricing.py")
+SYNC_SCRIPT = os.path.join(BASE_DIR, "sync_course_tabs.py")
 
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
 SCOPE = [
@@ -91,24 +90,24 @@ tab_control, tab_analytics = st.tabs(["⚡ Automation Controls", "📈 Price Com
 # TAB 1: AUTOMATION CONTROLS
 # ==========================================
 with tab_control:
-    st.write("Manage monthly layout rollovers and live price web scraping directly from your browser.")
+    st.write("Manage monthly layout rollovers, live price web scraping, and course tab syncing directly from your browser.")
     st.divider()
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     # --- 1. MONTHLY LAYOUT ROLLOVER ---
     with col1:
         st.subheader("1. Monthly Layout Rollover")
         st.caption("Generates new monthly placeholder rows in Google Sheets.")
         
-        source_month = st.text_input("Source Month (Copy baseline from):", value="May 2026")
-        new_month = st.text_input("New Month (To create):", value="June 2026")
+        source_month = st.text_input("Source Month:", value="May 2026")
+        new_month = st.text_input("New Month:", value="June 2026")
         
         if st.button("🚀 Run Layout Append", use_container_width=True):
             if not source_month or not new_month:
                 st.error("Please provide both Source Month and New Month.")
             elif not os.path.exists(APPEND_SCRIPT):
-                st.error(f"File not found: `append_month.py` inside `{BASE_DIR}`")
+                st.error(f"File not found: `append_month.py`")
             else:
                 with st.spinner(f"Appending '{new_month}' based on '{source_month}'..."):
                     try:
@@ -133,13 +132,13 @@ with tab_control:
         st.subheader("2. Live Price Scraper")
         st.caption("Crawls competitor pages and populates live prices into Google Sheets.")
         
-        target_month = st.text_input("Target Month to Scrape & Update:", value="June 2026")
+        target_month = st.text_input("Target Month to Scrape:", value="June 2026")
         
         if st.button("🔍 Run Live Scraper", use_container_width=True):
             if not target_month:
                 st.error("Please enter a Target Month.")
             elif not os.path.exists(PRICING_SCRIPT):
-                st.error(f"File not found: `pricing.py` inside `{BASE_DIR}`")
+                st.error(f"File not found: `pricing.py`")
             else:
                 with st.status(f"Scraper running for {target_month}...", expanded=True) as status:
                     try:
@@ -170,6 +169,33 @@ with tab_control:
                     except Exception as e:
                         st.error(f"Execution failed: {str(e)}")
 
+    # --- 3. COURSE TABS AUTO-SYNC ---
+    with col3:
+        st.subheader("3. Course Tabs Sync")
+        st.caption("Syncs May & June data from Master tabs into individual Course Tabs.")
+        
+        if st.button("🔄 Sync Course Tabs Now", use_container_width=True):
+            if not os.path.exists(SYNC_SCRIPT):
+                st.error(f"File not found: `sync_course_tabs.py`")
+            else:
+                with st.spinner("Syncing course tabs in Google Sheets..."):
+                    try:
+                        env = os.environ.copy()
+                        env["CREDS_FILE_PATH"] = CREDS_FILE
+                        env["SOURCE_MONTH"] = source_month
+                        env["NEW_MONTH"] = new_month
+                        
+                        result = subprocess.run(
+                            [sys.executable, SYNC_SCRIPT], 
+                            capture_output=True, text=True, check=True, env=env, cwd=BASE_DIR
+                        )
+                        st.success("Successfully synced all course tabs!")
+                        st.balloons()
+                        with st.expander("View Sync Logs"):
+                            st.code(result.stdout)
+                    except subprocess.CalledProcessError as e:
+                        st.error("Error executing sync_course_tabs.py")
+                        st.code(e.stderr if e.stderr else e.stdout)
 
 # ==========================================
 # TAB 2: PRICE COMPARISON ANALYTICS
@@ -183,7 +209,15 @@ with tab_analytics:
     with col_workspace:
         selected_tab = st.selectbox(
             "Select Worksheet Tab to Analyze:", 
-            ["Master Pricing", "Master Amazon", "Master - Bundles & For Life", "Master Handbooks"]
+            [
+                "Master Pricing", "Master Amazon", "Master - Bundles & For Life", "Master Handbooks",
+                "Pricing - ACLS Certification", "Pricing - ACLS Recertification",
+                "Pricing - PALS Certification", "Pricing - PALS Recertification",
+                "Pricing - BLS Certification", "Pricing - BLS Recertification",
+                "Pricing - CPR, AED & First Aid Certification", "Pricing - CPR, AED & First Aid Recertification",
+                "Pricing - Bloodborne Pathogens", "Pricing - NRP Certification", "Pricing - NRP Recertification",
+                "Pricing - Bundles & For Life"
+            ]
         )
         
     with col_btn:
