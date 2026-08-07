@@ -1,35 +1,44 @@
 import os
 import sys
-import subprocess
-import streamlit as st
-import tempfile
 import json
-import os
+import tempfile
+import subprocess
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import streamlit as st
 
-# Streamlit Cloud Credentials Bridge
-TEMP_CREDS_FILE = TEMP_CREDS_FILE if os.path.exists(TEMP_CREDS_FILE) else os.path.join(BASE_DIR, "pricing-tracker-499202-a9f7e625814b.json")
+# ==========================================
+# 1. STREAMLIT PAGE CONFIGURATION
+# ==========================================
+st.set_page_config(
+    page_title="Competitive Pricing Analysis", 
+    page_icon="📊", 
+    layout="wide"
+)
+
+# ==========================================
+# 2. CREDENTIALS & DIRECTORY SETUP
+# ==========================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Write Streamlit Cloud secrets to a temporary physical JSON file on startup
+TEMP_CREDS_FILE = os.path.join(tempfile.gettempdir(), "gcp_service_account.json")
+
 try:
     if "gcp_service_account" in st.secrets:
         with open(TEMP_CREDS_FILE, "w") as _f:
-            json.dump(CREDS_FILE, _f)
-except Exception:
-    pass
-
-import json
-import os
-import tempfile
-
-# --- DUMP SECRETS TO TEMP FILE FOR FILE-BASED AUTHENTICATION ---
-TEMP_CREDS_PATH = os.path.join(tempfile.gettempdir(), "gcp_service_account.json")
-try:
-    if "gcp_service_account" in st.secrets:
-        with open(TEMP_CREDS_PATH, "w") as f:
-            json.dump(CREDS_FILE, f)
+            json.dump(dict(st.secrets["gcp_service_account"]), _f)
 except Exception as e:
-    pass
+    st.error(f"Error initializing GCP Secrets: {e}")
 
+# Fallback to local JSON file if running on a local desktop
+LOCAL_CREDS_FILE = os.path.join(BASE_DIR, "pricing-tracker-499202-a9f7e625814b.json")
+CREDS_FILE = TEMP_CREDS_FILE if os.path.exists(TEMP_CREDS_FILE) else LOCAL_CREDS_FILE
 
-# --- STRICT EMAIL AUTHENTICATION GATE ---
+# ==========================================
+# 3. STRICT EMAIL AUTHENTICATION GATE
+# ==========================================
 try:
     ALLOWED_EMAILS = [e.strip().lower() for e in st.secrets["auth"]["allowed_emails"]]
     APP_PASSCODE = str(st.secrets["auth"]["passcode"])
@@ -60,33 +69,18 @@ if not st.session_state.authenticated:
 
 st.sidebar.button("Log Out", on_click=lambda: st.session_state.update(authenticated=False))
 
-import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-
 # ==========================================
-# 1. DIRECTORY & GOOGLE SHEETS CONFIGURATION
+# 4. SPREADSHEET & SCRIPT CONFIGURATION
 # ==========================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APPEND_SCRIPT = os.path.join(BASE_DIR, "append_month.py")
 PRICING_SCRIPT = os.path.join(BASE_DIR, "pricing.py")
 
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
-CREDS_FILE = CREDS_FILE
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
-
-# ==========================================
-# 2. STREAMLIT PAGE CONFIGURATION
-# ==========================================
-st.set_page_config(
-    page_title="Competitive Pricing Analysis", 
-    page_icon="📊", 
-    layout="wide"
-)
 
 st.title("📊 Competitive Pricing Analysis Center")
 
@@ -113,7 +107,7 @@ with tab_control:
         if st.button("🚀 Run Layout Append", use_container_width=True):
             if not source_month or not new_month:
                 st.error("Please provide both Source Month and New Month.")
-            elif not True:
+            elif not os.path.exists(APPEND_SCRIPT):
                 st.error(f"File not found: `append_month.py` inside `{BASE_DIR}`")
             else:
                 with st.spinner(f"Appending '{new_month}' based on '{source_month}'..."):
@@ -143,7 +137,7 @@ with tab_control:
         if st.button("🔍 Run Live Scraper", use_container_width=True):
             if not target_month:
                 st.error("Please enter a Target Month.")
-            elif not True:
+            elif not os.path.exists(PRICING_SCRIPT):
                 st.error(f"File not found: `pricing.py` inside `{BASE_DIR}`")
             else:
                 with st.status(f"Scraper running for {target_month}...", expanded=True) as status:
@@ -196,12 +190,12 @@ with tab_analytics:
         refresh_data = st.button("🔄 Fetch / Refresh Sheet Data", use_container_width=True)
 
     if refresh_data or "sheet_df" not in st.session_state:
-        if not not CREDS_FILE:
-            st.error(f"Credentials JSON not found at `{CREDS_FILE}`")
+        if not os.path.exists(CREDS_FILE):
+            st.error(f"Credentials JSON file not found at `{CREDS_FILE}`")
         else:
             with st.spinner(f"Loading '{selected_tab}' from Google Sheets..."):
                 try:
-                    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
+                    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, SCOPE)
                     client = gspread.authorize(creds)
                     sheet = client.open_by_key(SPREADSHEET_ID).worksheet(selected_tab)
                     
