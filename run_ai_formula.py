@@ -43,6 +43,7 @@ def col_to_letter(col_idx):
 
 def main():
     target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "July 2026")
+    target_month_str = str(target_month).strip().lower()
 
     print(f"Starting AI Formula Population for month: '{target_month}'")
     print(f"Using credentials file at: {CREDS_FILE}")
@@ -69,20 +70,19 @@ def main():
             if num_cols < 3:
                 continue
 
-            # Find matching rows for target month
             updates = []
             for row_idx, row_data in enumerate(all_values[1:], start=2):
                 if not row_data:
                     continue
                 
-                row_month = row_data[0].strip().lower() if len(row_data) > 0 else ""
+                # Safely convert cell values to strings before calling .strip()
+                row_month = str(row_data[0]).strip().lower() if len(row_data) > 0 and row_data[0] is not None else ""
                 
-                if row_month == target_month.strip().lower():
-                    course_name = row_data[1].strip() if len(row_data) > 1 else "Course"
+                if row_month == target_month_str:
+                    course_name = str(row_data[1]).strip() if len(row_data) > 1 and row_data[1] is not None else "Course"
                     
                     for col_idx in range(3, num_cols + 1):  # Columns C onwards
                         col_letter = col_to_letter(col_idx)
-                        # Formula string referencing course name and header cell
                         ai_formula = f'=AI("what is the current price of {course_name} on " & {col_letter}$1 & " website?")'
                         
                         cell_address = f"{col_letter}{row_idx}"
