@@ -46,7 +46,7 @@ APPEND_SCRIPT = os.path.join(BASE_DIR, "append_month.py")
 PRICING_SCRIPT = os.path.join(BASE_DIR, "pricing.py")
 
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
-CREDS_FILE = os.path.join(BASE_DIR, "pricing-tracker-499202-a9f7e625814b.json")
+CREDS_FILE = os.path.join(BASE_DIR, dict(st.secrets["gcp_service_account"]))
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
