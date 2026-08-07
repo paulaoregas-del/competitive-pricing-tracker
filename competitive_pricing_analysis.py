@@ -2,6 +2,19 @@ import os
 import sys
 import subprocess
 import streamlit as st
+import tempfile
+import json
+import os
+
+# Streamlit Cloud Credentials Bridge
+TEMP_CREDS_FILE = TEMP_CREDS_FILE if os.path.exists(TEMP_CREDS_FILE) else os.path.join(BASE_DIR, "pricing-tracker-499202-a9f7e625814b.json")
+try:
+    if "gcp_service_account" in st.secrets:
+        with open(TEMP_CREDS_FILE, "w") as _f:
+            json.dump(CREDS_FILE, _f)
+except Exception:
+    pass
+
 import json
 import os
 import tempfile
@@ -11,7 +24,7 @@ TEMP_CREDS_PATH = os.path.join(tempfile.gettempdir(), "gcp_service_account.json"
 try:
     if "gcp_service_account" in st.secrets:
         with open(TEMP_CREDS_PATH, "w") as f:
-            json.dump(dict(st.secrets["gcp_service_account"]), f)
+            json.dump(CREDS_FILE, f)
 except Exception as e:
     pass
 
@@ -59,7 +72,7 @@ APPEND_SCRIPT = os.path.join(BASE_DIR, "append_month.py")
 PRICING_SCRIPT = os.path.join(BASE_DIR, "pricing.py")
 
 SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
-creds_dict = dict(st.secrets["gcp_service_account"])
+CREDS_FILE = CREDS_FILE
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
@@ -183,12 +196,12 @@ with tab_analytics:
         refresh_data = st.button("🔄 Fetch / Refresh Sheet Data", use_container_width=True)
 
     if refresh_data or "sheet_df" not in st.session_state:
-        if not not creds_dict:
-            st.error(f"Credentials JSON not found at `{creds_dict}`")
+        if not not CREDS_FILE:
+            st.error(f"Credentials JSON not found at `{CREDS_FILE}`")
         else:
             with st.spinner(f"Loading '{selected_tab}' from Google Sheets..."):
                 try:
-                    creds = ServiceAccountCredentials.from_json_keyfile_name(TEMP_CREDS_PATH, scope)
+                    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
                     client = gspread.authorize(creds)
                     sheet = client.open_by_key(SPREADSHEET_ID).worksheet(selected_tab)
                     
