@@ -14,11 +14,7 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-TARGET_WORKSHEETS = [
-    "Master Pricing", 
-    "Master Amazon", 
-    "Master - Bundles & For Life", 
-    "Master Handbooks",
+COURSE_WORKSHEETS = [
     "Pricing - ACLS Certification", 
     "Pricing - ACLS Recertification",
     "Pricing - PALS Certification", 
@@ -41,6 +37,12 @@ def col_to_letter(col_idx):
         result = chr(65 + remainder) + result
     return result
 
+def get_clean_course_name(sheet_name):
+    """Derive clean course name directly from tab name."""
+    if sheet_name.startswith("Pricing - "):
+        return sheet_name.replace("Pricing - ", "").strip()
+    return sheet_name.strip()
+
 def main():
     target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "July 2026")
     target_month_str = str(target_month).strip().lower()
@@ -55,7 +57,7 @@ def main():
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
-    for sheet_name in TARGET_WORKSHEETS:
+    for sheet_name in COURSE_WORKSHEETS:
         try:
             ws = spreadsheet.worksheet(sheet_name)
             all_values = ws.get_all_values(value_render_option='FORMULA')
@@ -70,18 +72,19 @@ def main():
             if num_cols < 3:
                 continue
 
+            # Directly extract course name from tab name
+            course_name = get_clean_course_name(sheet_name)
+
             updates = []
             for row_idx, row_data in enumerate(all_values[1:], start=2):
                 if not row_data:
                     continue
                 
-                # Safely convert cell values to strings before calling .strip()
                 row_month = str(row_data[0]).strip().lower() if len(row_data) > 0 and row_data[0] is not None else ""
                 
                 if row_month == target_month_str:
-                    course_name = str(row_data[1]).strip() if len(row_data) > 1 and row_data[1] is not None else "Course"
-                    
-                    for col_idx in range(3, num_cols + 1):  # Columns C onwards
+                    # Fill formulas for Column C onwards using course_name from tab title
+                    for col_idx in range(3, num_cols + 1):
                         col_letter = col_to_letter(col_idx)
                         ai_formula = f'=AI("what is the current price of {course_name} on " & {col_letter}$1 & " website?")'
                         
@@ -93,14 +96,14 @@ def main():
 
             if updates:
                 ws.batch_update(updates, value_input_option='USER_ENTERED')
-                print(f"✅ Populated {len(updates)} AI formulas in worksheet '{sheet_name}' for '{target_month}'")
+                print(f"✅ Populated AI formulas in '{sheet_name}' using course '{course_name}' for '{target_month}'")
             else:
                 print(f"No placeholder rows found for '{target_month}' in sheet '{sheet_name}'. Run Layout Append first.")
 
         except Exception as e:
             print(f"Error processing worksheet '{sheet_name}': {str(e)}")
 
-    print("🎉 AI Formula population completed across all tabs!")
+    print("🎉 AI Formula population completed across all course tabs!")
 
 if __name__ == "__main__":
     main()
