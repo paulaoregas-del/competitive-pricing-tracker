@@ -2,6 +2,19 @@ import os
 import sys
 import subprocess
 import streamlit as st
+import json
+import os
+import tempfile
+
+# --- DUMP SECRETS TO TEMP FILE FOR FILE-BASED AUTHENTICATION ---
+TEMP_CREDS_PATH = os.path.join(tempfile.gettempdir(), "gcp_service_account.json")
+try:
+    if "gcp_service_account" in st.secrets:
+        with open(TEMP_CREDS_PATH, "w") as f:
+            json.dump(dict(st.secrets["gcp_service_account"]), f)
+except Exception as e:
+    pass
+
 
 # --- STRICT EMAIL AUTHENTICATION GATE ---
 try:
@@ -175,7 +188,7 @@ with tab_analytics:
         else:
             with st.spinner(f"Loading '{selected_tab}' from Google Sheets..."):
                 try:
-                    creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+                    creds = ServiceAccountCredentials.from_json_keyfile_name(TEMP_CREDS_PATH, scope), scope)
                     client = gspread.authorize(creds)
                     sheet = client.open_by_key(SPREADSHEET_ID).worksheet(selected_tab)
                     
