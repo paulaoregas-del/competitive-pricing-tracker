@@ -188,7 +188,7 @@ with tab_analytics:
         else:
             with st.spinner(f"Loading '{selected_tab}' from Google Sheets..."):
                 try:
-                    creds = ServiceAccountCredentials.from_json_keyfile_name(TEMP_CREDS_PATH, scope), scope)
+                    creds = ServiceAccountCredentials.from_json_keyfile_name(TEMP_CREDS_PATH, scope)
                     client = gspread.authorize(creds)
                     sheet = client.open_by_key(SPREADSHEET_ID).worksheet(selected_tab)
                     
