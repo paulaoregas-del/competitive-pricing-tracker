@@ -112,7 +112,7 @@ def deduplicate_columns(df):
     df.columns = cols
     return df
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def fetch_worksheet_df(tab_name):
     if not os.path.exists(CREDS_FILE):
         return None, f"Credentials file not found at `{CREDS_FILE}`"
@@ -120,7 +120,8 @@ def fetch_worksheet_df(tab_name):
         creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, SCOPE)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SPREADSHEET_ID).worksheet(tab_name)
-        data = sheet.get_all_values()
+        # Fetch FORMATTED_VALUE to receive evaluated numeric values ($65) instead of formula strings (=AI(...))
+        data = sheet.get_all_values(value_render_option='FORMATTED_VALUE')
         if data:
             headers = data[0]
             df = pd.DataFrame(data[1:], columns=headers)
