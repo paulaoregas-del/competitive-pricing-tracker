@@ -9,11 +9,27 @@ from oauth2client.service_account import ServiceAccountCredentials
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDS_FILE = os.environ.get("CREDS_FILE_PATH", os.path.join(BASE_DIR, "pricing-tracker-499202-a9f7e625814b.json"))
 
-SPREADSHEET_ID = "1YGKMhO0hvWmKe-i03C0mTDcI4LquaAzA-2_oaioMpko"
+# Correct Spreadsheet ID with the 12 Course Pricing tabs
+SPREADSHEET_ID = "1V2pnwBe4qJj65BBrEc-PQP07SNczMmqI9oNeeGtwedM"
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
+]
+
+COURSE_WORKSHEETS = [
+    "Pricing - ACLS Certification", 
+    "Pricing - ACLS Recertification",
+    "Pricing - PALS Certification", 
+    "Pricing - PALS Recertification",
+    "Pricing - BLS Certification", 
+    "Pricing - BLS Recertification",
+    "Pricing - CPR, AED & First Aid Certification", 
+    "Pricing - CPR, AED & First Aid Recertification",
+    "Pricing - Bloodborne Pathogens", 
+    "Pricing - NRP Certification", 
+    "Pricing - NRP Recertification",
+    "Pricing - Bundles & For Life"
 ]
 
 def fetch_page_text_clean(url):
@@ -31,7 +47,7 @@ def fetch_page_text_clean(url):
         return ""
 
 def main():
-    target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "July 2026")
+    target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "August 2026")
     print(f"--- STARTING HTTP PRICE SCRAPER FOR TARGET PERIOD: {target_month.upper()} ---")
     
     if not os.path.exists(CREDS_FILE):
@@ -41,12 +57,15 @@ def main():
     client = gspread.authorize(creds)
     workbook = client.open_by_key(SPREADSHEET_ID)
 
-    # Dynamically fetch all worksheet tabs in the Google Sheet
-    all_worksheets = [ws for ws in workbook.worksheets() if ws.title != "Stolen Content URLs"]
+    existing_tabs = [ws.title for ws in workbook.worksheets()]
 
-    for ws in all_worksheets:
-        tab_name = ws.title
-        print(f"Scanning Worksheet Tab: '{tab_name}'...")
+    for tab_name in COURSE_WORKSHEETS:
+        if tab_name not in existing_tabs:
+            print(f"Skipping tab '{tab_name}' (not present in sheet).")
+            continue
+
+        print(f"Scanning Course Tab: '{tab_name}'...")
+        ws = workbook.worksheet(tab_name)
         all_values = ws.get_all_values()
 
         if not all_values or len(all_values) < 2:
@@ -55,7 +74,6 @@ def main():
 
         headers = all_values[0]
         
-        # Parse hyperlink URLs from headers
         for col_idx in range(2, len(headers)):
             cell_header = headers[col_idx].strip()
             url = ""
@@ -73,7 +91,7 @@ def main():
             if content:
                 print(f"  -> Successfully fetched content for URL in column {col_idx+1}")
 
-    print("\n--- ALL WORKSHEETS PROCESSED SUCCESSFULLY ---")
+    print("\n--- ALL 12 COURSE WORKSHEETS PROCESSED SUCCESSFULLY ---")
 
 if __name__ == "__main__":
     main()
