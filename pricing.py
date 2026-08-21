@@ -39,10 +39,10 @@ def extract_course_specific_price(page_text, course_name, comp_name):
     
     # Target prices tied to specific product keywords
     if "recertification" in c_lower or "renewal" in c_lower:
-        match = re.search(r'(?:recertification|renewal|renew)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(r'(?:recertification|recertified|renewal|renew)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
     elif "certification" in c_lower or "initial" in c_lower:
-        match = re.search(r'(?:certification|initial|course)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(r'(?:certification|certified|initial|course)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
 
     # Secondary course match
@@ -59,11 +59,14 @@ def extract_course_specific_price(page_text, course_name, comp_name):
 
 def fetch_page_text_clean(url):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Upgrade-Insecure-Requests": "1"
     }
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=12) as response:
             html = response.read().decode('utf-8', errors='ignore')
             clean_text = re.sub(r'<(script|style).*?>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
             clean_text = re.sub(r'<.*?>', ' ', clean_text)
@@ -92,6 +95,7 @@ def main():
         print(f"\nScanning Course Tab: '{tab_name}'...")
         ws = workbook.worksheet(tab_name)
         
+        # Explicitly pull all headers across range A1:AS1 formula rendering
         all_values_formula = ws.get_all_values(value_render_option='FORMULA')
 
         if not all_values_formula or len(all_values_formula) < 2:
@@ -109,7 +113,10 @@ def main():
             print(f"  -> No placeholder row found for '{target_month}' in '{tab_name}'. Skipping.")
             continue
 
-        for col_idx in range(2, len(headers)):
+        # Loop specifically through Columns C (index 2) to AS (index 44 / Column 45)
+        max_col_to_check = min(len(headers), 45)
+
+        for col_idx in range(2, max_col_to_check):
             cell_header = headers[col_idx].strip()
             url = ""
             comp_name = f"Competitor Column {col_idx + 1}"
@@ -126,6 +133,7 @@ def main():
                 url = cell_header
 
             if not url or not url.startswith("http"):
+                print(f"  -> Column {col_idx + 1} [{comp_name}]: No valid HTTP hyperlink found in row 1.")
                 continue
 
             print(f"  -> Fetching live price for [{comp_name}] ({url})...")
@@ -138,10 +146,14 @@ def main():
                 if found_price:
                     ws.update_cell(target_row_idx, col_idx + 1, found_price)
                     print(f"     ✅ Updated [{comp_name}] in Column {col_idx+1} with price: {found_price}")
+                else:
+                    print(f"     ⚠️ No specific price matched on [{comp_name}] page.")
+            else:
+                print(f"     ⚠️ Empty or blocked response from [{comp_name}].")
 
-            time.sleep(0.3)
+            time.sleep(0.5)
 
-    print("\n--- ALL COURSE WORKSHEETS PROCESSED SUCCESSFULLY ---")
+    print("\n--- ALL COURSE WORKSHEETS PROCESSED THROUGH COLUMN AS1 SUCCESSFULLY ---")
 
 if __name__ == "__main__":
     main()
