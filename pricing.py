@@ -2,8 +2,7 @@ import os
 import sys
 import json
 import re
-import requests
-from bs4 import BeautifulSoup
+import urllib.request
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -32,36 +31,20 @@ COURSE_WORKSHEETS = [
     "Pricing - Bundles & For Life"
 ]
 
-def extract_course_specific_price(page_text, course_name):
-    clean_text = re.sub(r'\s+', ' ', page_text)
-    c_name_lower = course_name.lower().strip()
-    
-    if "acls" in c_name_lower:
-        match = re.search(r'acls(?:[^\$]*?)(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
-        if match: return match.group(1)
-    elif "pals" in c_name_lower:
-        match = re.search(r'pals(?:[^\$]*?)(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
-        if match: return match.group(1)
-    elif "bls" in c_name_lower:
-        match = re.search(r'bls(?:[^\$]*?)(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
-        if match: return match.group(1)
-            
-    match = re.search(rf'{re.escape(c_name_lower)}[^\$]*?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
-    if match: return match.group(1)
-    return None
-
-def fetch_page_content_http(url):
+def fetch_page_text_clean(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, "html.parser")
-            return soup.get_text()
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+            # Strip out script/style elements and HTML tags using regex
+            clean_text = re.sub(r'<(script|style).*?>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            clean_text = re.sub(r'<.*?>', ' ', clean_text)
+            return re.sub(r'\s+', ' ', clean_text)
     except Exception:
-        pass
-    return ""
+        return ""
 
 def main():
     target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "July 2026")
@@ -103,9 +86,9 @@ def main():
             if not url or not url.startswith("http"):
                 continue
 
-            content = fetch_page_content_http(url)
+            content = fetch_page_text_clean(url)
             if content:
-                print(f"  -> Processed URL for column {col_idx+1}")
+                print(f"  -> Successfully fetched URL content for column {col_idx+1}")
 
     print("\n--- SCRAPER EXECUTED SUCCESSFULLY ---")
 
