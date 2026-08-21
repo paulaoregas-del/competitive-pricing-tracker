@@ -33,33 +33,28 @@ COURSE_WORKSHEETS = [
     "Pricing - Bundles & For Life"
 ]
 
-def extract_course_specific_price(page_text, course_name):
+def extract_course_specific_price(page_text, course_name, comp_name):
     clean_text = re.sub(r'\s+', ' ', page_text)
     c_lower = course_name.lower().strip()
     
-    # 1. Look for explicit Course + Tier (Recertification vs Initial/Certification)
+    # Target prices tied to specific product keywords
     if "recertification" in c_lower or "renewal" in c_lower:
-        match = re.search(r'(?:recertification|renewal|renew)[^\$]{1,100}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(r'(?:recertification|renewal|renew)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
     elif "certification" in c_lower or "initial" in c_lower:
-        match = re.search(r'(?:certification|initial|course)[^\$]{1,100}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+        match = re.search(r'(?:certification|initial|course)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
 
-    # 2. Look for Keyword + Price proximity (ACLS / PALS / BLS / CPR / NRP)
+    # Secondary course match
     acronyms = ["acls", "pals", "bls", "cpr", "nrp", "bloodborne"]
     for ac in acronyms:
         if ac in c_lower:
-            match = re.search(rf'{ac}[^\$]{{1,120}}?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
+            match = re.search(rf'{ac}[^\$]{{1,100}}?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
             if match: return match.group(1)
 
-    # 3. Strict fallback: standard price regex requiring a non-generic context
-    prices = re.findall(r'(\$\d+(?:\.\d{2})?)', clean_text)
-    if prices:
-        # Filter out obvious false positives like $0.00, $0, or $19.95 handbook add-ons
-        valid = [p for p in prices if p not in ["$0.00", "$0", "$0.0", "$19.95"]]
-        if valid:
-            return valid[0]
-            
+    # Fallback to general price
+    match = re.search(r'(\$\d+(?:\.\d{2})?)', clean_text)
+    if match: return match.group(1)
     return None
 
 def fetch_page_text_clean(url):
@@ -94,7 +89,7 @@ def main():
         if tab_name not in existing_tabs:
             continue
 
-        print(f"Scanning Course Tab: '{tab_name}'...")
+        print(f"\nScanning Course Tab: '{tab_name}'...")
         ws = workbook.worksheet(tab_name)
         
         all_values_formula = ws.get_all_values(value_render_option='FORMULA')
@@ -117,10 +112,14 @@ def main():
         for col_idx in range(2, len(headers)):
             cell_header = headers[col_idx].strip()
             url = ""
+            comp_name = f"Competitor Column {col_idx + 1}"
+
             if '=HYPERLINK(' in cell_header.upper():
                 try:
                     parts = cell_header.split('"')
                     url = parts[1]
+                    if len(parts) > 3:
+                        comp_name = parts[3]
                 except Exception:
                     pass
             elif cell_header.startswith("http"):
@@ -129,14 +128,16 @@ def main():
             if not url or not url.startswith("http"):
                 continue
 
+            print(f"  -> Fetching live price for [{comp_name}] ({url})...")
             page_text = fetch_page_text_clean(url)
+            
             if page_text:
                 course_name = tab_name.replace("Pricing - ", "")
-                found_price = extract_course_specific_price(page_text, course_name)
+                found_price = extract_course_specific_price(page_text, course_name, comp_name)
                 
                 if found_price:
                     ws.update_cell(target_row_idx, col_idx + 1, found_price)
-                    print(f"  -> Updated Column {col_idx+1} ({course_name}) with price: {found_price}")
+                    print(f"     ✅ Updated [{comp_name}] in Column {col_idx+1} with price: {found_price}")
 
             time.sleep(0.3)
 
