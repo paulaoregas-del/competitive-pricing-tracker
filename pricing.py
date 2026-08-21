@@ -66,7 +66,7 @@ def fetch_page_text_clean(url):
         return ""
 
 def main():
-    target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "August 2026")
+    target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "July 2026")
     today_str = datetime.date.today().strftime('%Y-%m-%d')
     print(f"--- STARTING HTTP PRICE SCRAPER FOR TARGET PERIOD: {target_month.upper()} ---")
     
@@ -85,21 +85,24 @@ def main():
 
         print(f"Scanning Course Tab: '{tab_name}'...")
         ws = workbook.worksheet(tab_name)
-        all_values = ws.get_all_values()
+        
+        # Fetch formula values to correctly parse =HYPERLINK(...) headers
+        all_values_formula = ws.get_all_values(value_render_option='FORMULA')
 
-        if not all_values or len(all_values) < 2:
+        if not all_values_formula or len(all_values_formula) < 2:
             continue
 
-        headers = all_values[0]
+        headers = all_values_formula[0]
         
+        # Locate target row
         target_row_idx = None
-        for r_idx, row in enumerate(all_values[1:], start=2):
-            if row and row[0].strip().lower() == target_month.lower():
+        for r_idx, row in enumerate(all_values_formula[1:], start=2):
+            if row and str(row[0]).strip().lower() == target_month.lower():
                 target_row_idx = r_idx
                 break
 
         if not target_row_idx:
-            print(f"  -> No target row found for '{target_month}' in '{tab_name}'. Skipping.")
+            print(f"  -> No placeholder row found for '{target_month}' in '{tab_name}'. Skipping.")
             continue
 
         for col_idx in range(2, len(headers)):
@@ -111,7 +114,9 @@ def main():
                     url = parts[1]
                 except Exception:
                     pass
-            
+            elif cell_header.startswith("http"):
+                url = cell_header
+
             if not url or not url.startswith("http"):
                 continue
 
@@ -124,9 +129,9 @@ def main():
                     ws.update_cell(target_row_idx, col_idx + 1, found_price)
                     print(f"  -> Updated Column {col_idx+1} with price: {found_price}")
 
-            time.sleep(0.5)
+            time.sleep(0.3)
 
-    print("\n--- ALL COURSE WORKSHEETS SCRAPED & UPDATED SUCCESSFULLY ---")
+    print("\n--- ALL COURSE WORKSHEETS PROCESSED SUCCESSFULLY ---")
 
 if __name__ == "__main__":
     main()
