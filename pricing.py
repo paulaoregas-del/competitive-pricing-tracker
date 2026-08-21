@@ -35,20 +35,31 @@ COURSE_WORKSHEETS = [
 
 def extract_course_specific_price(page_text, course_name):
     clean_text = re.sub(r'\s+', ' ', page_text)
-    c_name_lower = course_name.lower().strip()
+    c_lower = course_name.lower().strip()
     
-    if "acls" in c_name_lower:
-        match = re.search(r'acls(?:[^\$]*?)(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+    # 1. Look for explicit Course + Tier (Recertification vs Initial/Certification)
+    if "recertification" in c_lower or "renewal" in c_lower:
+        match = re.search(r'(?:recertification|renewal|renew)[^\$]{1,100}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
-    elif "pals" in c_name_lower:
-        match = re.search(r'pals(?:[^\$]*?)(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
+    elif "certification" in c_lower or "initial" in c_lower:
+        match = re.search(r'(?:certification|initial|course)[^\$]{1,100}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
-    elif "bls" in c_name_lower:
-        match = re.search(r'bls(?:[^\$]*?)(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
-        if match: return match.group(1)
+
+    # 2. Look for Keyword + Price proximity (ACLS / PALS / BLS / CPR / NRP)
+    acronyms = ["acls", "pals", "bls", "cpr", "nrp", "bloodborne"]
+    for ac in acronyms:
+        if ac in c_lower:
+            match = re.search(rf'{ac}[^\$]{{1,120}}?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
+            if match: return match.group(1)
+
+    # 3. Strict fallback: standard price regex requiring a non-generic context
+    prices = re.findall(r'(\$\d+(?:\.\d{2})?)', clean_text)
+    if prices:
+        # Filter out obvious false positives like $0.00, $0, or $19.95 handbook add-ons
+        valid = [p for p in prices if p not in ["$0.00", "$0", "$0.0", "$19.95"]]
+        if valid:
+            return valid[0]
             
-    match = re.search(r'(\$\d+(?:\.\d{2})?)', clean_text)
-    if match: return match.group(1)
     return None
 
 def fetch_page_text_clean(url):
@@ -66,7 +77,7 @@ def fetch_page_text_clean(url):
         return ""
 
 def main():
-    target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "July 2026")
+    target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "August 2026")
     today_str = datetime.date.today().strftime('%Y-%m-%d')
     print(f"--- STARTING HTTP PRICE SCRAPER FOR TARGET PERIOD: {target_month.upper()} ---")
     
@@ -86,7 +97,6 @@ def main():
         print(f"Scanning Course Tab: '{tab_name}'...")
         ws = workbook.worksheet(tab_name)
         
-        # Fetch formula values to correctly parse =HYPERLINK(...) headers
         all_values_formula = ws.get_all_values(value_render_option='FORMULA')
 
         if not all_values_formula or len(all_values_formula) < 2:
@@ -94,7 +104,6 @@ def main():
 
         headers = all_values_formula[0]
         
-        # Locate target row
         target_row_idx = None
         for r_idx, row in enumerate(all_values_formula[1:], start=2):
             if row and str(row[0]).strip().lower() == target_month.lower():
@@ -127,7 +136,7 @@ def main():
                 
                 if found_price:
                     ws.update_cell(target_row_idx, col_idx + 1, found_price)
-                    print(f"  -> Updated Column {col_idx+1} with price: {found_price}")
+                    print(f"  -> Updated Column {col_idx+1} ({course_name}) with price: {found_price}")
 
             time.sleep(0.3)
 
