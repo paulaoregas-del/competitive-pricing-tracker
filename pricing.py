@@ -37,7 +37,6 @@ def extract_course_specific_price(page_text, course_name, comp_name):
     clean_text = re.sub(r'\s+', ' ', page_text)
     c_lower = course_name.lower().strip()
     
-    # Target prices tied to specific product keywords
     if "recertification" in c_lower or "renewal" in c_lower:
         match = re.search(r'(?:recertification|recertified|renewal|renew)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
@@ -45,14 +44,12 @@ def extract_course_specific_price(page_text, course_name, comp_name):
         match = re.search(r'(?:certification|certified|initial|course)[^\$]{1,80}?(\$\d+(?:\.\d{2})?)', clean_text, re.IGNORECASE)
         if match: return match.group(1)
 
-    # Secondary course match
     acronyms = ["acls", "pals", "bls", "cpr", "nrp", "bloodborne"]
     for ac in acronyms:
         if ac in c_lower:
             match = re.search(rf'{ac}[^\$]{{1,100}}?(\$\d+(?:\.\d{{2}})?)', clean_text, re.IGNORECASE)
             if match: return match.group(1)
 
-    # Fallback to general price
     match = re.search(r'(\$\d+(?:\.\d{2})?)', clean_text)
     if match: return match.group(1)
     return None
@@ -68,7 +65,7 @@ def fetch_page_text_clean(url):
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=12) as response:
             html = response.read().decode('utf-8', errors='ignore')
-            clean_text = re.sub(r'<(script|style).*?>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            clean_text = re.sub(r'<(script|style).*?>.*.*?/\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
             clean_text = re.sub(r'<.*?>', ' ', clean_text)
             return re.sub(r'\s+', ' ', clean_text)
     except Exception:
@@ -76,7 +73,6 @@ def fetch_page_text_clean(url):
 
 def main():
     target_month = os.environ.get("TARGET_MONTH_OVERRIDE") or (sys.argv[1] if len(sys.argv) > 1 else "August 2026")
-    today_str = datetime.date.today().strftime('%Y-%m-%d')
     print(f"--- STARTING HTTP PRICE SCRAPER FOR TARGET PERIOD: {target_month.upper()} ---")
     
     if not os.path.exists(CREDS_FILE):
@@ -95,7 +91,6 @@ def main():
         print(f"\nScanning Course Tab: '{tab_name}'...")
         ws = workbook.worksheet(tab_name)
         
-        # Explicitly pull all headers across range A1:AS1 formula rendering
         all_values_formula = ws.get_all_values(value_render_option='FORMULA')
 
         if not all_values_formula or len(all_values_formula) < 2:
@@ -113,27 +108,26 @@ def main():
             print(f"  -> No placeholder row found for '{target_month}' in '{tab_name}'. Skipping.")
             continue
 
-        # Loop specifically through Columns C (index 2) to AS (index 44 / Column 45)
+        # Check all headers from Column 3 (C) through Column 45 (AS)
         max_col_to_check = min(len(headers), 45)
 
         for col_idx in range(2, max_col_to_check):
-            cell_header = headers[col_idx].strip()
+            cell_header = str(headers[col_idx]).strip()
             url = ""
             comp_name = f"Competitor Column {col_idx + 1}"
 
-            if '=HYPERLINK(' in cell_header.upper():
-                try:
-                    parts = cell_header.split('"')
-                    url = parts[1]
-                    if len(parts) > 3:
-                        comp_name = parts[3]
-                except Exception:
-                    pass
-            elif cell_header.startswith("http"):
-                url = cell_header
+            # Universal regex to find http/https URLs inside single quotes, double quotes, or raw text
+            url_match = re.search(r'https?://[^\s"\',)]+', cell_header, re.IGNORECASE)
+            if url_match:
+                url = url_match.group(0)
 
-            if not url or not url.startswith("http"):
-                print(f"  -> Column {col_idx + 1} [{comp_name}]: No valid HTTP hyperlink found in row 1.")
+            # Extract label from HYPERLINK formula if present
+            label_match = re.search(r'HYPERLINK\s*\(\s*["\'][^"\']+["\']\s*,\s*["\']([^"\']+)["\']\s*\)', cell_header, re.IGNORECASE)
+            if label_match:
+                comp_name = label_match.group(1)
+
+            if not url:
+                print(f"  -> Column {col_idx + 1} [{comp_name}]: Blank header or no URL in cell.")
                 continue
 
             print(f"  -> Fetching live price for [{comp_name}] ({url})...")
@@ -147,13 +141,13 @@ def main():
                     ws.update_cell(target_row_idx, col_idx + 1, found_price)
                     print(f"     ✅ Updated [{comp_name}] in Column {col_idx+1} with price: {found_price}")
                 else:
-                    print(f"     ⚠️ No specific price matched on [{comp_name}] page.")
+                    print(f"     ⚠️ No price pattern matched on [{comp_name}] page.")
             else:
-                print(f"     ⚠️ Empty or blocked response from [{comp_name}].")
+                print(f"     ⚠️ Empty/blocked response from [{comp_name}].")
 
-            time.sleep(0.5)
+            time.sleep(0.4)
 
-    print("\n--- ALL COURSE WORKSHEETS PROCESSED THROUGH COLUMN AS1 SUCCESSFULLY ---")
+    print("\n--- ALL COURSE WORKSHEETS PROCESSED SUCCESSFULLY ---")
 
 if __name__ == "__main__":
     main()
